@@ -1,0 +1,8 @@
+# Chair GT from Webots (simple)
+def: CHAIR
+position_world_m: 1.430000 -0.540000 0.000000
+rotation_world_R_row_major:
+-1.000000 -0.000003 0.000000
+0.000003 -1.000000 0.000000
+0.000000 0.000000 1.000000
+scale_vec3f: 1.000000 1.000000 1.000000
