@@ -1,152 +1,96 @@
-#!/usr/bin/env python3
-"""
-Material prediction from an image using Google Gemini (google-genai SDK).
+# material_prediction_stage.py
 
-Usage:
-  python material_prediction.py /path/to/image.jpg
-
-Auth options (pick one):
-  1) Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/service_account.json
-  2) Pass --key-path /path/to/service_account.json
-  3) Use Application Default Credentials (e.g., gcloud auth application-default login)
-
-This script saves a JSON file named:
-  "Material prediction.json"
-in the SAME folder as the input image.
-"""
-
-from __future__ import annotations
-
-import argparse
+import os
 import json
-import re
+import mimetypes
+import argparse
 from pathlib import Path
-from typing import Any, Optional
 
 from google import genai
-from google.genai import types
-from google.oauth2 import service_account
-from PIL import Image
 
 
-DEFAULT_PROMPT = (
-    "List materials of the main object found in this image. "
-    "Return the result strictly as JSON with this schema: "
-    "{'object': [['material', 'density_kg_per_m3'], ...]}."
-)
+DefaultPrompt = """You are an expert in material science and visual reasoning for robotic applications.
+
+Given an RGB image of an object, your task is to:
+1. Identify the object and provide a short, clear description.
+2. Predict the main materials present in the object based on visual appearance.
+3. Assign a realistic approximate mass density (in kg/m³) for each material.
+
+Guidelines:
+- Only include dominant materials.
+- Use common material categories (e.g., wood, metal, plastic, glass, cardboard, rubber).
+- Use realistic density values based on standard physical properties.
+- Ensure the output is strictly in JSON format.
+
+Output format:
+{
+  "Description": "Short description of the object",
+  "Material_1": density_value,
+  "Material_2": density_value
+}
+"""
+
+DefaultModelName = "gemini-robotics-er-1.5-preview"
 
 
-def _build_client(key_path: Optional[str]) -> genai.Client:
-    """
-    Build a Gemini client. If key_path is provided, use a service account.
-    Otherwise rely on GOOGLE_APPLICATION_CREDENTIALS or ADC.
-    """
-    if key_path:
-        scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-        credentials = service_account.Credentials.from_service_account_file(
-            key_path, scopes=scopes
-        )
-        return genai.Client(credentials=credentials)
-
-    # GOOGLE_APPLICATION_CREDENTIALS / ADC
-    return genai.Client()
+def BuildArgParser() -> argparse.ArgumentParser:
+    Parser = argparse.ArgumentParser(
+        description="Pipeline stage 1: predict material from image with Gemini."
+    )
+    Parser.add_argument("--image_path", type=str, required=True, help="Input image path.")
+    Parser.add_argument("--output_dir", type=str, required=True, help="Output directory for JSON file.")
+    return Parser
 
 
-def _extract_json(text: str) -> Any:
-    """
-    Ensure valid JSON even if the model wraps it in markdown.
-    """
-    text = text.strip()
+def MaterialPrediction() -> None:
+    Parser = BuildArgParser()
+    Args = Parser.parse_args()
 
-    # Remove markdown fences if present
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text)
+    ApiKey = os.getenv("GEMINI_API_KEY")
+    if not ApiKey:
+        raise RuntimeError("Set GEMINI_API_KEY environment variable first.")
 
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
+    ImagePath = Path(Args.image_path)
+    if not ImagePath.exists():
+        raise FileNotFoundError(f"Image not found: {ImagePath}")
 
-    # Fallback: extract first JSON block
-    match = re.search(r"(\{.*\}|\[.*\])", text, flags=re.DOTALL)
-    if not match:
-        raise ValueError("No valid JSON found in model response.")
-    return json.loads(match.group(1))
+    OutputJsonPath = Path(Args.output_dir) / f"{ImagePath.stem}.json"
+    OutputJsonPath.parent.mkdir(parents=True, exist_ok=True)
 
+    with open(ImagePath, "rb") as FileHandle:
+        ImageBytes = FileHandle.read()
 
-def predict_materials(
-    image_path: Path,
-    key_path: Optional[str],
-    model: str,
-    prompt: str,
-) -> Any:
-    client = _build_client(key_path)
+    MimeType, _ = mimetypes.guess_type(str(ImagePath))
+    MimeType = MimeType or "image/jpeg"
 
-    image = Image.open(image_path)
+    Client = genai.Client(api_key=ApiKey)
+    print("Client ready, model:", DefaultModelName)
 
-    response = client.models.generate_content(
-        model=model,
-        contents=[prompt, image],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json"
-        ),
+    Response = Client.models.generate_content(
+        model=DefaultModelName,
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": DefaultPrompt},
+                    {"inline_data": {"mime_type": MimeType, "data": ImageBytes}},
+                ],
+            }
+        ],
     )
 
-    if not getattr(response, "text", None):
-        raise RuntimeError("Model returned no text.")
+    RawResponse = Response.text or ""
 
-    return _extract_json(response.text)
+    print("\n=== RAW MODEL RESPONSE ===\n")
+    print(RawResponse)
 
+    ParsedResponse = json.loads(RawResponse)
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Predict materials from an image and save JSON next to it."
-    )
-    parser.add_argument(
-        "image",
-        type=str,
-        help="Path to input image (jpg/png/...)",
-    )
-    parser.add_argument(
-        "--key-path",
-        type=str,
-        default=None,
-        help="Service account JSON key path",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="gemini-2.5-flash",
-        help="Gemini model name",
-    )
-    parser.add_argument(
-        "--prompt",
-        type=str,
-        default=DEFAULT_PROMPT,
-        help="Prompt sent with the image",
-    )
+    with open(OutputJsonPath, "w", encoding="utf-8") as FileHandle:
+        json.dump(ParsedResponse, FileHandle, indent=2, ensure_ascii=False)
 
-    args = parser.parse_args()
-    image_path = Path(args.image).expanduser().resolve()
-
-    if not image_path.exists():
-        raise FileNotFoundError(f"Image not found: {image_path}")
-
-    output_path = image_path.parent / "Material prediction.json"
-
-    result = predict_materials(
-        image_path=image_path,
-        key_path=args.key_path,
-        model=args.model,
-        prompt=args.prompt,
-    )
-
-    with output_path.open("w", encoding="utf-8") as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
-
-    print(f"Saved: {output_path}")
-    return 0
+    print(f"\nParsed output saved to: {OutputJsonPath}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    MaterialPrediction()

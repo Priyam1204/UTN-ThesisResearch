@@ -1,152 +1,140 @@
-# SAM 3D
+# VLM-based Object Intrinsics Estimation for Cooperative Object Transportation
 
-SAM 3D Objects is one part of SAM 3D, a pair of models for object and human mesh reconstruction.  If you’re looking for SAM 3D Body, [click here](https://github.com/facebookresearch/sam-3d-body).
+This repository contains the implementation for a thesis pipeline that estimates object properties from a single RGB image and projects them into 3D reconstruction for downstream robotics tasks.
 
-# SAM 3D Objects
+The main objective is to enrich a reconstructed 3D object with:
+- material labels using vision-language model,
+- usability labels depending on task prompt.
 
-**SAM 3D Team**, [Xingyu Chen](https://scholar.google.com/citations?user=gjSHr6YAAAAJ&hl=en&oi=sra)\*, [Fu-Jen Chu](https://fujenchu.github.io/)\*, [Pierre Gleize](https://scholar.google.com/citations?user=4imOcw4AAAAJ&hl=en&oi=ao)\*, [Kevin J Liang](https://kevinjliang.github.io/)\*, [Alexander Sax](https://alexsax.github.io/)\*, [Hao Tang](https://scholar.google.com/citations?user=XY6Nh9YAAAAJ&hl=en&oi=sra)\*, [Weiyao Wang](https://sites.google.com/view/weiyaowang/home)\*, [Michelle Guo](https://scholar.google.com/citations?user=lyjjpNMAAAAJ&hl=en&oi=ao), [Thibaut Hardin](https://github.com/Thibaut-H), [Xiang Li](https://ryanxli.github.io/)⚬, [Aohan Lin](https://github.com/linaohan), [Jia-Wei Liu](https://jia-wei-liu.github.io/), [Ziqi Ma](https://ziqi-ma.github.io/)⚬, [Anushka Sagar](https://www.linkedin.com/in/anushkasagar/), [Bowen Song](https://scholar.google.com/citations?user=QQKVkfcAAAAJ&hl=en&oi=sra)⚬, [Xiaodong Wang](https://scholar.google.com/citations?authuser=2&user=rMpcFYgAAAAJ), [Jianing Yang](https://jedyang.com/)⚬, [Bowen Zhang](http://home.ustc.edu.cn/~zhangbowen/)⚬, [Piotr Dollár](https://pdollar.github.io/)†, [Georgia Gkioxari](https://georgiagkioxari.com/)†, [Matt Feiszli](https://scholar.google.com/citations?user=A-wA73gAAAAJ&hl=en&oi=ao)†§, [Jitendra Malik](https://people.eecs.berkeley.edu/~malik/)†§
-
-***Meta Superintelligence Labs***
-
-*Core contributor (Alphabetical, Equal Contribution), ⚬Intern, †Project leads, §Equal Contribution
-
-[[`Paper`](https://ai.meta.com/research/publications/sam-3d-3dfy-anything-in-images/)] [[`Code`](https://github.com/facebookresearch/sam-3d-objects)] [[`Website`](https://ai.meta.com/sam3d/)] [[`Demo`](https://www.aidemos.meta.com/segment-anything/editor/convert-image-to-3d)] [[`Blog`](https://ai.meta.com/blog/sam-3d/)] [[`BibTeX`](#citing-sam-3d-objects)] [[`Roboflow`](https://blog.roboflow.com/sam-3d/)]
-
-**SAM 3D Objects** is a foundation model that reconstructs full 3D shape geometry, texture, and layout from a single image, excelling in real-world scenarios with occlusion and clutter by using progressive training and a data engine with human feedback. It outperforms prior 3D generation models in human preference tests on real-world objects and scenes. We released code, weights, online demo, and a new challenging benchmark.
+The thesis was done at the [University of Technology Nuremberg](https://www.utn.de/) as part of the [MSc AI & Robotics](https://www.utn.de/studium/ai-robotics/) program.
 
 
-<p align="center"><img src="doc/intro.png"/></p>
-
------
-
-<p align="center"><img src="doc/arch.png"/></p>
-
-## Latest updates
-
-**11/19/2025** - Checkpoints Launched, Web Demo and Paper are out.
-
-## Installation
-
-Follow the [setup](doc/setup.md) steps before running the following.
-
-## Single or Multi-Object 3D Generation
-
-SAM 3D Objects can convert masked objects in an image, into 3D models with pose, shape, texture, and layout. SAM 3D is designed to be robust in challenging natural images, handling small objects and occlusions, unusual poses, and difficult situations encountered in uncurated natural scenes like this kidsroom:
+## Pipeline
 
 <p align="center">
-  <img src="notebook/images/shutterstock_stylish_kidsroom_1640806567/image.png" width="55%"/>
-  <img src="doc/kidsroom_transparent.gif" width="40%"/>
+  <img src="PipelineArch.png" />
 </p>
 
-For a quick start, run `python demo.py` or use the the following lines of code:
+<p align="center">
+Pipeline Architecture.
+</p>
 
-```python
-import sys
 
-# import inference code
-sys.path.append("notebook")
-from inference import Inference, load_image, load_single_mask
+The complete pipeline with fixed task prompts is [Pipeline.py](Pipeline.py).
 
-# load model
-tag = "hf"
-config_path = f"checkpoints/{tag}/pipeline.yaml"
-inference = Inference(config_path, compile=False)
+Final output:
+- `results/projection/<image_stem>.npz`
 
-# load image and mask
-image = load_image("notebook/images/shutterstock_stylish_kidsroom_1640806567/image.png")
-mask = load_single_mask("notebook/images/shutterstock_stylish_kidsroom_1640806567", index=14)
+This NPZ is updated throughout the pipeline and includes projection data, material labels, and usability info.
 
-# run model
-output = inference(image, mask, seed=42)
 
-# export gaussian splat
-output["gs"].save_ply(f"splat.ply")
+### Stage Order
+
+1. [MaterialPrediction.py](MaterialPrediction.py)
+- Input: image
+- Output: `results/materials/<image_stem>.json`
+
+2. [AutomaticSegmentation.py](AutomaticSegmentation.py)
+- Input: image + material JSON description
+- Output: `results/masks/<image_stem>_object_mask.png`
+
+3. [SAM3DReconstruction.py](SAM3DReconstruction.py)
+- Input: image + object mask
+- Output: `results/reconstruction/<image_stem>.ply`
+
+4. [PointCloudProjection.py](PointCloudProjection.py)
+- Input: image + reconstruction PLY + camera intrinsics/extrinsics
+- Output: `results/projection/<image_stem>.npz`
+
+5. [ClipFeature.py](ClipFeature.py)
+- Input: projection NPZ
+- Action: appends CLIP sparse features into the same NPZ
+
+6. [ClipFeatureMatching.py](ClipFeatureMatching.py)
+- Input: projection NPZ + material JSON
+- Action: assigns CLIP-based material label per retained point and appends `clip_label`
+
+7. [NonUsabilityMask.py](NonUsabilityMask.py)
+- Input: image
+- Output: `results/masks/<image_stem>_nonusable_mask.png`
+
+8. [3DNonUsability.py](3DNonUsability.py)
+- Input: projection NPZ + non-usability mask
+- Action: appends 3D usability data into the same NPZ
+
+## Requirements
+
+- `GEMINI_API_KEY` (env variable)
+- SAM checkpoint: `checkpoints/sam_vit_h_4b8939.pth`
+- Camera files (same folder as image):
+  - `intrinsic.txt`
+  - `extrinsic.txt`
+
+
+## Quick Start Checklist
+
+1. Activate your Python environment.
+2. Set `GEMINI_API_KEY`.
+3. Setup [SAM3D](https://github.com/facebookresearch/sam-3d-objects/blob/main/doc/setup.md)**
+
+4. Install additional dependencies for this pipeline
+```bash
+pip install -r requirements.thesis.txt 
 ```
 
-For  more details and multi-object reconstruction, please take a look at out two jupyter notebooks:
-* [single object](notebook/demo_single_object.ipynb)
-* [multi object](notebook/demo_multi_object.ipynb)
+5. Ensure checkpoint file exists at `checkpoints/sam_vit_h_4b8939.pth`.
+6. Place `intrinsic.txt` and `extrinsic.txt` next to your input image.
+7. Run:
 
-
-## SAM 3D Body
-
-[SAM 3D Body (3DB)](https://github.com/facebookresearch/sam-3d-body) is a robust promptable foundation model for single-image 3D human mesh recovery (HMR).
-
-As a way to combine the strengths of both **SAM 3D Objects** and **SAM 3D Body**, we provide an example notebook that demonstrates how to combine the results of both models such that they are aligned in the same frame of reference. Check it out [here](notebook/demo_3db_mesh_alignment.ipynb).
-
-## License
-
-The SAM 3D Objects model checkpoints and code are licensed under [SAM License](./LICENSE).
-
-## Contributing
-
-See [contributing](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
-
-## Contributors
-
-The SAM 3D Objects project was made possible with the help of many contributors.
-
-Robbie Adkins,
-Paris Baptiste,
-Karen Bergan,
-Kai Brown,
-Michelle Chan,
-Ida Cheng,
-Khadijat Durojaiye,
-Patrick Edwards,
-Daniella Factor,
-Facundo Figueroa,
-Rene  de la Fuente,
-Eva Galper,
-Cem Gokmen,
-Alex He,
-Enmanuel Hernandez,
-Dex Honsa,
-Leonna Jones,
-Arpit Kalla,
-Kris Kitani,
-Helen Klein,
-Kei Koyama,
-Robert Kuo,
-Vivian Lee,
-Alex Lende,
-Jonny Li,
-Kehan Lyu,
-Faye Ma,
-Mallika Malhotra,
-Sasha Mitts,
-William Ngan,
-George Orlin,
-Peter Park,
-Don Pinkus,
-Roman Radle,
-Nikhila Ravi,
-Azita Shokrpour,
-Jasmine Shone,
-Zayida Suber,
-Phillip Thomas,
-Tatum Turner,
-Joseph Walker,
-Meng Wang,
-Claudette Ward,
-Andrew Westbury,
-Lea Wilken,
-Nan Yang,
-Yael Yungster
-
-
-## Citing SAM 3D Objects
-
-If you use SAM 3D Objects in your research, please use the following BibTeX entry.
-
+```bash
+python Pipeline.py --image_path "path/to/image.jpg"
 ```
-@article{sam3dteam2025sam3d3dfyimages,
-      title={SAM 3D: 3Dfy Anything in Images}, 
-      author={SAM 3D Team and Xingyu Chen and Fu-Jen Chu and Pierre Gleize and Kevin J Liang and Alexander Sax and Hao Tang and Weiyao Wang and Michelle Guo and Thibaut Hardin and Xiang Li and Aohan Lin and Jiawei Liu and Ziqi Ma and Anushka Sagar and Bowen Song and Xiaodong Wang and Jianing Yang and Bowen Zhang and Piotr Dollár and Georgia Gkioxari and Matt Feiszli and Jitendra Malik},
-      year={2025},
-      eprint={2511.16624},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2511.16624}, 
-}
-```
+
+
+
+## Point Cloud Fusion
+
+If a single view does not capture all relevant parts of the object the 3D reconstruction will also contain partial information, then run a fusion step after the initial pipeline.
+
+- Script: [PointCloudFusion.py](PointCloudFusion.py)
+- Purpose: fuse point-level outputs into a denser, consolidated NPZ for downstream analysis.
+
+## Pipeline Example
+
+### 🔹 1. Input Image
+
+<p align="center">
+  <img src="Webots\controllers\tb4\ninthangle\tb4_image.jpg" width="45%" />
+  <img src="Webots\controllers\tb4\secondangle\tb4_image.jpg" width="45%" />
+
+</p>
+
+---
+
+### 🔹 2. Pipeline Output
+
+<p align="center">
+  <img src="boundary_material_rotation_updated.gif" width="45%" />
+  <img src="usability_rotation.gif" width="45%" />
+</p>
+
+
+
+---
+
+### 🔹 3. Output Usage
+
+Material labels enable estimation of physical properties; here, they are used to compute the center of mass for robotic transportation. The right shows the usable contact footprint for swarm-based carrying. This information can further support improved swarm formation strategies (e.g., MARL-based coordination).
+
+<p align="center">
+  <img src="OutputUsage.png" />
+</p>
+
+<p align="center">
+Left: geometric vs material-aware center of mass. Right: usable contact regions excluding fragile surfaces (glass, cardboard, PCB).
+</p>
+
+
+## Acknowledgement
+
+This repository is forked from [SAM3D](https://github.com/facebookresearch/sam-3d-objects) and builds upon its 3D reconstruction by adding VLM-based reasoning, CLIP feature alignment, and usability-aware 3D labeling.
