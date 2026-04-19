@@ -12,7 +12,7 @@ The thesis was done at the [University of Technology Nuremberg](https://www.utn.
 ## Pipeline
 
 <p align="center">
-  <img src="PipelineArch.png" />
+  <img src="data/PipelineArch.png" />
 </p>
 
 <p align="center">
@@ -75,7 +75,7 @@ This NPZ is updated throughout the pipeline and includes projection data, materi
 
 1. Activate your Python environment.
 2. Set `GEMINI_API_KEY`.
-3. Setup [SAM3D](https://github.com/facebookresearch/sam-3d-objects/blob/main/doc/setup.md)**
+3. [Setup SAM3D](https://github.com/facebookresearch/sam-3d-objects/blob/main/doc/setup.md)
 
 4. Install additional dependencies for this pipeline
 ```bash
@@ -104,8 +104,8 @@ If a single view does not capture all relevant parts of the object the 3D recons
 ### 🔹 1. Input Image
 
 <p align="center">
-  <img src="Webots\controllers\tb4\ninthangle\tb4_image.jpg" width="45%" />
-  <img src="Webots\controllers\tb4\secondangle\tb4_image.jpg" width="45%" />
+  <img src="data/tb4_image_ninthangle.jpg" width="45%" />
+  <img src="data/tb4_image_secondangle.jpg" width="45%" />
 
 </p>
 
@@ -114,8 +114,8 @@ If a single view does not capture all relevant parts of the object the 3D recons
 ### 🔹 2. Pipeline Output
 
 <p align="center">
-  <img src="boundary_material_rotation_updated.gif" width="45%" />
-  <img src="usability_rotation.gif" width="45%" />
+  <img src="data/boundary_material_rotation_updated.gif" width="45%" />
+  <img src="data/usability_rotation.gif" width="45%" />
 </p>
 
 
@@ -127,7 +127,7 @@ If a single view does not capture all relevant parts of the object the 3D recons
 Material labels enable estimation of physical properties; here, they are used to compute the center of mass for robotic transportation. The right shows the usable contact footprint for swarm-based carrying. This information can further support improved swarm formation strategies (e.g., MARL-based coordination).
 
 <p align="center">
-  <img src="OutputUsage.png" />
+  <img src="data/OutputUsage.png" />
 </p>
 
 <p align="center">

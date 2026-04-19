@@ -1,0 +1,12 @@
+# Basic runtime libraries for the thesis pipeline (no version pins)
+numpy
+opencv-python
+pillow
+matplotlib
+torch
+plyfile
+segment-anything
+google-genai
+openai-clip
+
+
